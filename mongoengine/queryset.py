@@ -731,7 +731,7 @@ class QuerySet(object):
         return self.count()
 
     def map_reduce(self, map_f, reduce_f, finalize_f=None, limit=None,
-                   scope=None, keep_temp=False):
+                   scope=None, keep_temp=False, out=None):
         """Perform a map/reduce query using the current query spec
         and ordering. While ``map_reduce`` respects ``QuerySet`` chaining,
         it must be the last call made, as it does not return a maleable
@@ -794,6 +794,10 @@ class QuerySet(object):
 
         if limit:
             mr_args['limit'] = limit
+
+        if out:
+            mr_args['out'] = out
+            mr_args['keeptemp'] = True
 
         results = self._collection.map_reduce(map_f, reduce_f, **mr_args)
         results = results.find()
