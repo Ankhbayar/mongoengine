@@ -19,7 +19,8 @@ __all__ = ['StringField', 'IntField', 'FloatField', 'BooleanField',
            'DateTimeField', 'EmbeddedDocumentField', 'ListField', 'DictField',
            'ObjectIdField', 'ReferenceField', 'ValidationError',
            'DecimalField', 'URLField', 'GenericReferenceField', 'FileField',
-           'BinaryField', 'SortedListField', 'EmailField', 'GeoPointField']
+           'BinaryField', 'SortedListField', 'EmailField', 'GeoPointField',
+           'JoinField']
 
 RECURSIVE_REFERENCE_CONSTANT = 'self'
 
@@ -743,3 +744,30 @@ class GeoPointField(BaseField):
         if (not isinstance(value[0], (float, int)) and
             not isinstance(value[1], (float, int))):
             raise ValidationError('Both values in point must be float or int.')
+
+
+class JoinField(BaseField):
+    """A field that references an object that is
+    in the collection set in the field"""
+
+    def __init__(self, document_type, **kwargs):
+        self.document_type_obj = document_type
+        super(JoinField, self).__init__(**kwargs)
+
+    def __get__(self, instance, owner):
+
+        if instance is None:
+            return self
+
+        value = instance._data.get(self.name)
+        if value is not None:
+            if not isinstance(value, Document):
+                if isinstance(self.document_type_obj, basestring):
+                    self.document_type_obj = get_document(self.document_type_obj)
+                instance._data[self.name] = self.document_type_obj.objects.get(pk = value)
+
+        return super(JoinField, self).__get__(instance, owner)
+
+    def to_mongo(self, document):
+        return document.pk
+

@@ -785,5 +785,28 @@ class FieldTest(unittest.TestCase):
         self.assertEqual(d2.data, {})
         self.assertEqual(d2.data2, {})
 
+    def test_join_field(self):
+
+        class User(Document):
+            _id = IntField(primary_key = True)
+            name = StringField()
+
+        class Post(Document):
+            title = StringField()
+            author = JoinField(User)
+
+
+        u1 = User(pk = 1, name = 'Terr')
+        u1.save()
+        u2 = User(pk = 2, name = 'Stoel')
+        u2.save()
+        p1 = Post(title = 'Post #1', author = u1)
+        p1.save()
+        p1.reload()
+
+        self.assertEqual(p1.author.pk, 1)
+        self.assertEqual(p1.author.name, 'Terr')
+
+
 if __name__ == '__main__':
     unittest.main()
