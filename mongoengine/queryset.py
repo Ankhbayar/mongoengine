@@ -796,10 +796,12 @@ class QuerySet(object):
             mr_args['limit'] = limit
 
         if out:
-            mr_args['out'] = out
             mr_args['keeptemp'] = True
+        else:
+           out = "mr_temporary"
+           mr_args['keeptemp'] = False
 
-        results = self._collection.map_reduce(map_f, reduce_f, **mr_args)
+        results = self._collection.map_reduce(map_f, reduce_f, out,**mr_args)
         results = results.find()
 
         if self._ordering:
