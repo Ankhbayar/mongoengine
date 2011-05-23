@@ -340,7 +340,7 @@ class ListField(BaseField):
 
         if isinstance(self.field, ReferenceField):
             referenced_type = self.field.document_type
-            # Get value from document instance if available 
+            # Get value from document instance if available
             value_list = instance._data.get(self.name)
             if value_list:
                 deref_list = []
@@ -644,7 +644,7 @@ class GridFSProxy(object):
         if not self.newfile:
             self.new_file()
             self.grid_id = self.newfile._id
-        self.newfile.writelines(lines) 
+        self.newfile.writelines(lines)
 
     def read(self):
         try:
