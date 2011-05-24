@@ -269,6 +269,11 @@ class TopLevelDocumentMetaclass(DocumentMetaclass):
         # DocumentMetaclass before instantiating CollectionManager object
         new_class = super_new(cls, name, bases, attrs)
 
+        # Allow dynamically-generated collection names. Pass the newly
+        # created class so the callee has access to __module__, etc.
+        if callable(meta['collection']):
+            new_class._meta['collection'] = meta['collection'](new_class)
+
         # Provide a default queryset unless one has been manually provided
         if not hasattr(new_class, 'objects'):
             new_class.objects = QuerySetManager()

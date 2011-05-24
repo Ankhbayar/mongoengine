@@ -61,6 +61,23 @@ class DocumentTest(unittest.TestCase):
         # Ensure Document isn't treated like an actual document
         self.assertFalse(hasattr(Document, '_fields'))
 
+    def test_dynamic_collection_naming(self):
+
+        def create_collection_name(cls):
+            return "PERSON"
+
+        class DynamicPerson(Document):
+            name = StringField()
+            age = IntField()
+
+            meta = {'collection': create_collection_name}
+
+        collection = DynamicPerson._get_collection_name()
+        self.assertEquals(collection, 'PERSON')
+
+        DynamicPerson(name='Test User', age=30).save()
+        self.assertTrue(collection in self.db.collection_names())
+
     def test_get_superclasses(self):
         """Ensure that the correct list of superclasses is assembled.
         """
