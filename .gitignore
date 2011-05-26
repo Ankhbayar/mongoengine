@@ -1,9 +1,0 @@
-*.pyc
-.*.swp
-*.egg
-docs/.build
-docs/_build
-build/
-dist/
-mongoengine.egg-info/
-env/
