@@ -1742,6 +1742,9 @@ class QuerySetTest(unittest.TestCase):
 
 class QTest(unittest.TestCase):
 
+    def setUp(self):
+        connect(db='mongoenginetest')
+
     def test_empty_q(self):
         """Ensure that empty Q objects won't hurt.
         """
