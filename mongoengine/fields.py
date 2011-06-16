@@ -1,4 +1,5 @@
-from base import BaseField, ObjectIdField, ValidationError, get_document
+from base import (BaseField, ComplexBaseField, ObjectIdField,
+                  ValidationError, get_document)
 from queryset import DO_NOTHING
 from document import Document, EmbeddedDocument
 from connection import _get_db
@@ -12,15 +13,14 @@ import pymongo.binary
 import datetime, time
 import decimal
 import gridfs
-import warnings
 
 
 __all__ = ['StringField', 'IntField', 'FloatField', 'BooleanField',
            'DateTimeField', 'EmbeddedDocumentField', 'ListField', 'DictField',
-           'ObjectIdField', 'ReferenceField', 'ValidationError',
-           'DecimalField', 'URLField', 'GenericReferenceField', 'FileField',
-           'BinaryField', 'SortedListField', 'EmailField', 'GeoPointField',
-           'JoinField']
+           'ObjectIdField', 'ReferenceField', 'ValidationError', 'MapField',
+           'DecimalField', 'ComplexDateTimeField', 'URLField',
+           'GenericReferenceField', 'FileField', 'BinaryField',
+           'SortedListField', 'EmailField', 'GeoPointField']
 
 RECURSIVE_REFERENCE_CONSTANT = 'self'
 
@@ -119,8 +119,8 @@ class EmailField(StringField):
 
     EMAIL_REGEX = re.compile(
         r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
-        r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"' # quoted-string
-        r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?$', re.IGNORECASE # domain
+        r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"'  # quoted-string
+        r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?$', re.IGNORECASE  # domain
     )
 
     def validate(self, value):
@@ -154,6 +154,7 @@ class IntField(BaseField):
     def prepare_query_value(self, op, value):
         return int(value)
 
+
 class FloatField(BaseField):
     """An floating point number field.
     """
@@ -178,6 +179,7 @@ class FloatField(BaseField):
 
     def prepare_query_value(self, op, value):
         return float(value)
+
 
 class DecimalField(BaseField):
     """A fixed-point decimal number field.
@@ -261,20 +263,112 @@ class DateTimeField(BaseField):
         else:
             usecs = 0
         kwargs = {'microsecond': usecs}
-        try: # Seconds are optional, so try converting seconds first.
+        try:  # Seconds are optional, so try converting seconds first.
             return datetime.datetime(*time.strptime(value, '%Y-%m-%d %H:%M:%S')[:6],
                                      **kwargs)
-
         except ValueError:
-            try: # Try without seconds.
+            try:  # Try without seconds.
                 return datetime.datetime(*time.strptime(value, '%Y-%m-%d %H:%M')[:5],
                                          **kwargs)
-            except ValueError: # Try without hour/minutes/seconds.
+            except ValueError:  # Try without hour/minutes/seconds.
                 try:
                     return datetime.datetime(*time.strptime(value, '%Y-%m-%d')[:3],
                                              **kwargs)
                 except ValueError:
                     return None
+
+
+class ComplexDateTimeField(StringField):
+    """
+    ComplexDateTimeField handles microseconds exactly instead of rounding
+    like DateTimeField does.
+
+    Derives from a StringField so you can do `gte` and `lte` filtering by
+    using lexicographical comparison when filtering / sorting strings.
+
+    The stored string has the following format:
+
+        YYYY,MM,DD,HH,MM,SS,NNNNNN
+
+    Where NNNNNN is the number of microseconds of the represented `datetime`.
+    The `,` as the separator can be easily modified by passing the `separator`
+    keyword when initializing the field.
+    """
+
+    def __init__(self, separator=',', **kwargs):
+        self.names = ['year', 'month', 'day', 'hour', 'minute', 'second',
+                      'microsecond']
+        self.separtor = separator
+        super(ComplexDateTimeField, self).__init__(**kwargs)
+
+    def _leading_zero(self, number):
+        """
+        Converts the given number to a string.
+
+        If it has only one digit, a leading zero so as it has always at least
+        two digits.
+        """
+        if int(number) < 10:
+            return "0%s" % number
+        else:
+            return str(number)
+
+    def _convert_from_datetime(self, val):
+        """
+        Convert a `datetime` object to a string representation (which will be
+        stored in MongoDB). This is the reverse function of
+        `_convert_from_string`.
+
+        >>> a = datetime(2011, 6, 8, 20, 26, 24, 192284)
+        >>> RealDateTimeField()._convert_from_datetime(a)
+        '2011,06,08,20,26,24,192284'
+        """
+        data = []
+        for name in self.names:
+            data.append(self._leading_zero(getattr(val, name)))
+        return ','.join(data)
+
+    def _convert_from_string(self, data):
+        """
+        Convert a string representation to a `datetime` object (the object you
+        will manipulate). This is the reverse function of
+        `_convert_from_datetime`.
+
+        >>> a = '2011,06,08,20,26,24,192284'
+        >>> ComplexDateTimeField()._convert_from_string(a)
+        datetime.datetime(2011, 6, 8, 20, 26, 24, 192284)
+        """
+        data = data.split(',')
+        data = map(int, data)
+        values = {}
+        for i in range(7):
+            values[self.names[i]] = data[i]
+        return datetime.datetime(**values)
+
+    def __get__(self, instance, owner):
+        data = super(ComplexDateTimeField, self).__get__(instance, owner)
+        if data == None:
+            return datetime.datetime.now()
+        return self._convert_from_string(data)
+
+    def __set__(self, instance, value):
+        value = self._convert_from_datetime(value)
+        return super(ComplexDateTimeField, self).__set__(instance, value)
+
+    def validate(self, value):
+        if not isinstance(value, datetime.datetime):
+            raise ValidationError('Only datetime objects may used in a \
+                                   ComplexDateTimeField')
+
+    def to_python(self, value):
+        return self._convert_from_string(value)
+
+    def to_mongo(self, value):
+        return self._convert_from_datetime(value)
+
+    def prepare_query_value(self, op, value):
+        return self._convert_from_datetime(value)
+
 
 class EmbeddedDocumentField(BaseField):
     """An embedded document field. Only valid values are subclasses of
@@ -304,6 +398,8 @@ class EmbeddedDocumentField(BaseField):
         return value
 
     def to_mongo(self, value):
+        if not isinstance(value, self.document_type):
+            return value
         return self.document_type.to_mongo(value)
 
     def validate(self, value):
@@ -323,7 +419,7 @@ class EmbeddedDocumentField(BaseField):
         return self.to_mongo(value)
 
 
-class ListField(BaseField):
+class ListField(ComplexBaseField):
     """A list field that wraps a standard field, allowing multiple instances
     of the field to be used as a list in the database.
     """
@@ -331,55 +427,10 @@ class ListField(BaseField):
     # ListFields cannot be indexed with _types - MongoDB doesn't support this
     _index_with_types = False
 
-    def __init__(self, field, **kwargs):
-        if not isinstance(field, BaseField):
-            raise ValidationError('Argument to ListField constructor must be '
-                                  'a valid field')
+    def __init__(self, field=None, **kwargs):
         self.field = field
         kwargs.setdefault('default', lambda: [])
         super(ListField, self).__init__(**kwargs)
-
-    def __get__(self, instance, owner):
-        """Descriptor to automatically dereference references.
-        """
-        if instance is None:
-            # Document class being used rather than a document object
-            return self
-
-        if isinstance(self.field, ReferenceField):
-            referenced_type = self.field.document_type
-            # Get value from document instance if available
-            value_list = instance._data.get(self.name)
-            if value_list:
-                deref_list = []
-                for value in value_list:
-                    # Dereference DBRefs
-                    if isinstance(value, (pymongo.dbref.DBRef)):
-                        value = _get_db().dereference(value)
-                        deref_list.append(referenced_type._from_son(value))
-                    else:
-                        deref_list.append(value)
-                instance._data[self.name] = deref_list
-
-        if isinstance(self.field, GenericReferenceField):
-            value_list = instance._data.get(self.name)
-            if value_list:
-                deref_list = []
-                for value in value_list:
-                    # Dereference DBRefs
-                    if isinstance(value, (dict, pymongo.son.SON)):
-                        deref_list.append(self.field.dereference(value))
-                    else:
-                        deref_list.append(value)
-                instance._data[self.name] = deref_list
-
-        return super(ListField, self).__get__(instance, owner)
-
-    def to_python(self, value):
-        return [self.field.to_python(item) for item in value]
-
-    def to_mongo(self, value):
-        return [self.field.to_mongo(item) for item in value]
 
     def validate(self, value):
         """Make sure that a list of valid fields is being used.
@@ -387,28 +438,15 @@ class ListField(BaseField):
         if not isinstance(value, (list, tuple)):
             raise ValidationError('Only lists and tuples may be used in a '
                                   'list field')
-
-        try:
-            [self.field.validate(item) for item in value]
-        except Exception, err:
-            raise ValidationError('Invalid ListField item (%s)' % str(item))
+        super(ListField, self).validate(value)
 
     def prepare_query_value(self, op, value):
-        if op in ('set', 'unset'):
-            return [self.field.prepare_query_value(op, v) for v in value]
-        return self.field.prepare_query_value(op, value)
-
-    def lookup_member(self, member_name):
-        return self.field.lookup_member(member_name)
-
-    def _set_owner_document(self, owner_document):
-        self.field.owner_document = owner_document
-        self._owner_document = owner_document
-
-    def _get_owner_document(self, owner_document):
-        self._owner_document = owner_document
-
-    owner_document = property(_get_owner_document, _set_owner_document)
+        if self.field:
+            if op in ('set', 'unset') and (not isinstance(value, basestring)
+                and hasattr(value, '__iter__')):
+                return [self.field.prepare_query_value(op, v) for v in value]
+            return self.field.prepare_query_value(op, value)
+        return super(ListField, self).prepare_query_value(op, value)
 
 
 class SortedListField(ListField):
@@ -427,20 +465,21 @@ class SortedListField(ListField):
         super(SortedListField, self).__init__(field, **kwargs)
 
     def to_mongo(self, value):
+        value = super(SortedListField, self).to_mongo(value)
         if self._ordering is not None:
-            return sorted([self.field.to_mongo(item) for item in value],
-                          key=itemgetter(self._ordering))
-        return sorted([self.field.to_mongo(item) for item in value])
+            return sorted(value, key=itemgetter(self._ordering))
+        return sorted(value)
 
 
-class DictField(BaseField):
+class DictField(ComplexBaseField):
     """A dictionary field that wraps a standard Python dictionary. This is
     similar to an embedded document, but the structure is not defined.
 
     .. versionadded:: 0.3
     """
 
-    def __init__(self, basecls=None, *args, **kwargs):
+    def __init__(self, basecls=None, field=None, *args, **kwargs):
+        self.field = field
         self.basecls = basecls or BaseField
         assert issubclass(self.basecls, BaseField)
         kwargs.setdefault('default', lambda: {})
@@ -456,9 +495,36 @@ class DictField(BaseField):
         if any(('.' in k or '$' in k) for k in value):
             raise ValidationError('Invalid dictionary key name - keys may not '
                                   'contain "." or "$" characters')
+        super(DictField, self).validate(value)
 
     def lookup_member(self, member_name):
-        return self.basecls(db_field=member_name)
+        return DictField(basecls=self.basecls, db_field=member_name)
+
+    def prepare_query_value(self, op, value):
+        match_operators = ['contains', 'icontains', 'startswith',
+                           'istartswith', 'endswith', 'iendswith',
+                           'exact', 'iexact']
+
+        if op in match_operators and isinstance(value, basestring):
+            return StringField().prepare_query_value(op, value)
+
+        return super(DictField, self).prepare_query_value(op, value)
+
+
+class MapField(DictField):
+    """A field that maps a name to a specified field type. Similar to
+    a DictField, except the 'value' of each item must match the specified
+    field type.
+
+    .. versionadded:: 0.5
+    """
+
+    def __init__(self, field=None, *args, **kwargs):
+        if not isinstance(field, BaseField):
+            raise ValidationError('Argument to MapField constructor must be '
+                                  'a valid field')
+        super(MapField, self).__init__(field=field, *args, **kwargs)
+
 
 class ReferenceField(BaseField):
     """A reference to a document that will be automatically dereferenced on
@@ -546,6 +612,9 @@ class GenericReferenceField(BaseField):
     """A reference to *any* :class:`~mongoengine.document.Document` subclass
     that will be automatically dereferenced on access (lazily).
 
+    note:  Any documents used as a generic reference must be registered in the
+    document registry.  Importing the model will automatically register it.
+
     .. versionadded:: 0.3
     """
 
@@ -583,7 +652,7 @@ class GenericReferenceField(BaseField):
         id_ = id_field.to_mongo(id_)
         collection = document._meta['collection']
         ref = pymongo.dbref.DBRef(collection, id_)
-        return {'_cls': document.__class__.__name__, '_ref': ref}
+        return {'_cls': document._class_name, '_ref': ref}
 
     def prepare_query_value(self, op, value):
         return self.to_mongo(value)
@@ -621,10 +690,13 @@ class GridFSProxy(object):
     .. versionadded:: 0.4
     """
 
-    def __init__(self, grid_id=None):
+    def __init__(self, grid_id=None, key=None, instance=None):
         self.fs = gridfs.GridFS(_get_db())  # Filesystem instance
         self.newfile = None                 # Used for partial writes
         self.grid_id = grid_id              # Store GridFS id for file
+        self.gridout = None
+        self.key = key
+        self.instance = instance
 
     def __getattr__(self, name):
         obj = self.get()
@@ -638,8 +710,12 @@ class GridFSProxy(object):
     def get(self, id=None):
         if id:
             self.grid_id = id
+        if self.grid_id is None:
+            return None
         try:
-            return self.fs.get(id or self.grid_id)
+            if self.gridout is None:
+                self.gridout = self.fs.get(self.grid_id)
+            return self.gridout
         except:
             # File has been deleted
             return None
@@ -648,11 +724,12 @@ class GridFSProxy(object):
         self.newfile = self.fs.new_file(**kwargs)
         self.grid_id = self.newfile._id
 
-    def put(self, file, **kwargs):
+    def put(self, file_obj, **kwargs):
         if self.grid_id:
             raise GridFSError('This document already has a file. Either delete '
                               'it or call replace to overwrite it')
-        self.grid_id = self.fs.put(file, **kwargs)
+        self.grid_id = self.fs.put(file_obj, **kwargs)
+        self._mark_as_changed()
 
     def write(self, string):
         if self.grid_id:
@@ -669,9 +746,9 @@ class GridFSProxy(object):
             self.grid_id = self.newfile._id
         self.newfile.writelines(lines)
 
-    def read(self):
+    def read(self, size=-1):
         try:
-            return self.get().read()
+            return self.get().read(size)
         except:
             return None
 
@@ -679,10 +756,17 @@ class GridFSProxy(object):
         # Delete file from GridFS, FileField still remains
         self.fs.delete(self.grid_id)
         self.grid_id = None
+        self.gridout = None
+        self._mark_as_changed()
 
-    def replace(self, file, **kwargs):
+    def _mark_as_changed(self):
+        """Inform the instance that `self.key` has been changed"""
+        if self.instance:
+            self.instance._mark_as_changed(self.key)
+
+    def replace(self, file_obj, **kwargs):
         self.delete()
-        self.put(file, **kwargs)
+        self.put(file_obj, **kwargs)
 
     def close(self):
         if self.newfile:
@@ -706,10 +790,14 @@ class FileField(BaseField):
         grid_file = instance._data.get(self.name)
         self.grid_file = grid_file
         if self.grid_file:
+            if not self.grid_file.key:
+                self.grid_file.key = self.name
+                self.grid_file.instance = instance
             return self.grid_file
-        return GridFSProxy()
+        return GridFSProxy(key=self.name, instance=instance)
 
     def __set__(self, instance, value):
+        key = self.name
         if isinstance(value, file) or isinstance(value, str):
             # using "FileField() = file/string" notation
             grid_file = instance._data.get(self.name)
@@ -723,10 +811,12 @@ class FileField(BaseField):
                 grid_file.put(value)
             else:
                 # Create a new proxy object as we don't already have one
-                instance._data[self.name] = GridFSProxy()
-                instance._data[self.name].put(value)
+                instance._data[key] = GridFSProxy(key=key, instance=instance)
+                instance._data[key].put(value)
         else:
-            instance._data[self.name] = value
+            instance._data[key] = value
+
+        instance._mark_as_changed(key)
 
     def to_mongo(self, value):
         # Store the GridFS file id in MongoDB
@@ -764,30 +854,3 @@ class GeoPointField(BaseField):
         if (not isinstance(value[0], (float, int)) and
             not isinstance(value[1], (float, int))):
             raise ValidationError('Both values in point must be float or int.')
-
-
-class JoinField(BaseField):
-    """A field that references an object that is
-    in the collection set in the field"""
-
-    def __init__(self, document_type, **kwargs):
-        self.document_type_obj = document_type
-        super(JoinField, self).__init__(**kwargs)
-
-    def __get__(self, instance, owner):
-
-        if instance is None:
-            return self
-
-        value = instance._data.get(self.name)
-        if value is not None:
-            if not isinstance(value, Document):
-                if isinstance(self.document_type_obj, basestring):
-                    self.document_type_obj = get_document(self.document_type_obj)
-                instance._data[self.name] = self.document_type_obj.objects.get(pk = value)
-
-        return super(JoinField, self).__get__(instance, owner)
-
-    def to_mongo(self, document):
-        return document.pk
-
