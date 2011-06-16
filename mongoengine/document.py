@@ -167,6 +167,13 @@ class Document(BaseDocument):
             value._changed_fields = []
         return value
 
+    def to_dbref(self):
+        """Using for __raw__ queries """
+        if self.pk is None:
+             # TODO: Need improve
+             return None
+        return pymongo.dbref.DBRef(self.__class__._meta['collection'], self.pk)
+
     @classmethod
     def register_delete_rule(cls, document_cls, field_name, rule):
         """This method registers the delete rules to apply when removing this
