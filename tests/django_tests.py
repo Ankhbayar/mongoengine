@@ -112,16 +112,12 @@ class QuerySetTest(unittest.TestCase):
         d = {"posts": self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) )}
         self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
 
-        # Jon & Bob all works 
-        d = {"posts": self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) )}
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
-        
         # All works in May & Jun without order
         d = {"posts": self.Post.objects.filter(Q(ymd__startswith = "2011-05" ) | Q(ymd__startswith = "2011-06" ) )}
         self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
         
         # All works in May & Jun
-        d = {"posts": self.Post.objects.filter(Q(ymd__startswith = "2011-05" ) | Q(ymd__startswith = "2011-06" ) ).order_by("+order")}
+        d = {"posts": self.Post.objects.filter(Q(ymd__startswith = "2011-05" ) | Q(ymd__startswith = "2011-06" ) ).order_by("+order")} # Boom! #185
         self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
 
         # Jon & Bob all works 
