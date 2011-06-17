@@ -1551,6 +1551,107 @@ class DocumentTest(unittest.TestCase):
         author = self.Person.objects.first()
         self.assertEquals(author.name, 'Test User')
 
+    def test_db_ref_usage(self):
+        """ DB Ref usage in __raw__ queries """
+        class User(Document):
+            name = StringField()
+            
+        class Book(Document):
+            name = StringField()
+            author = ReferenceField(User)
+            extra =  DictField()
+            meta = {
+                'ordering': ['+name']
+            }
+            
+            def __unicode__(self):
+                return self.name
+            def __str__(self):
+                return self.name
+
+
+        # Drops
+        User.drop_collection()
+        Book.drop_collection()
+
+        # Authors 
+        bob = User.objects.create(name = "Bob")
+        jon = User.objects.create(name = "Jon")
+
+        # Redactors
+        karl = User.objects.create( name = "Karl")
+        susan = User.objects.create( name = "Susan")
+        peter = User.objects.create( name = "Peter")
+
+        # Bob
+        Book.objects.create( name = "1", author = bob, extra = {"a": bob.to_dbref(), "b" : [karl.to_dbref(), susan.to_dbref(),] } )
+        Book.objects.create( name = "2", author = bob, extra = {"a": bob.to_dbref(), "b" :  karl.to_dbref()} )
+        Book.objects.create( name = "3", author = bob, extra = {"a": bob.to_dbref(), "c" : [jon.to_dbref(), peter.to_dbref() ] })
+        Book.objects.create( name = "4", author = bob,)
+
+        # Jon
+        Book.objects.create( name = "5", author = jon,)
+        Book.objects.create( name = "6", author = peter,)
+        Book.objects.create( name = "7", author = jon,)
+        Book.objects.create( name = "8", author = jon,)
+        Book.objects.create( name = "9", author = jon, extra = {"a": peter.to_dbref() })
+
+        # Checks 
+        self.assertEqual(u",".join([str(b) for b in Book.objects.all()] ) , "1,2,3,4,5,6,7,8,9" )
+        # bob related books
+        self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
+                                    Q(extra__a = bob ) | 
+                                    Q(author = bob) | 
+                                    Q(extra__b = bob ) )] ) ,
+                                    "1,2,3,4" )
+        # Susan & Karl related books
+        self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
+                                    Q(extra__a__all = [karl.to_dbref(), susan.to_dbref()] ) | 
+                                    Q(author__all = [karl, susan ] ) |
+                                    Q(extra__b__all = [karl.to_dbref(), susan.to_dbref()] ) 
+                                    ) ] ) , "1" )
+
+        # $Where 
+        self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
+                                    __raw__ = { 
+                                        "$where" : """function(){ return this.name == '1' || this.name == '2'; } """ 
+                                        }    
+                                    ) ] ) , "1,2" )
+
+        ref_list = [ bob.to_dbref() , peter.to_dbref() ] 
+        code = code=pymongo.code.Code(""" function(){ 
+                                   for( ref in ref_list){
+                                       if (this.author == ref) return true;
+                                       //if ((this.extra.a == ref) || (this.extra.b == ref) ) return true;
+                                   }
+                                   return false;
+                                   } """,
+            {"ref_list": ref_list } )
+        self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
+                                    __raw__ = { 
+                                        "$where" : code 
+                                        }    
+                                    ) ] ) , "1,2,3,4,9")
+        # Finding bob or Peter related books 
+        #self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
+        #                            Q(extra__a = bob) | Q(extra__a = peter) | 
+        #                            Q(author__all = [bob, peter ] ) |
+        #                            #Q(extra__b = bob.to_dbref())  | Q(extra__b = peter.to_dbref())   
+        #                            Q(extra__b = bob) | Q(extra__b = peter) 
+        #                            ) ] ) , "1,2,3,4,9" )
+        #ref_list = [ bob.to_dbref(), peter.to_dbref() ]
+        #self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
+        #                            __raw__ = { 
+        #                                "$or" : [ 
+        #                                    {"author" : {"$all" : [ ref_list ] } },
+        #                                    {"extra" : { "$all" : 
+        #                                                [ {"a" : {"$all" : [ ref_list ] } },
+        #                                                  {"b" : {"$all" : [ ref_list ] } },
+        #                                                ] } }
+        #                                        ] }
+        #                            ) ] ) , "1,2,3,4,6" )
+
+                                    
 
 if __name__ == '__main__':
     unittest.main()
