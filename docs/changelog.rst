@@ -5,6 +5,75 @@ Changelog
 Changes in dev
 ==============
 
+- Fixed GridFS documents can now be pickled
+- Added Now raises an InvalidDocumentError when declaring multiple fields with the same db_field
+- Added InvalidQueryError when calling with_id with a filter
+- Added support for DBRefs in distinct()
+- Fixed issue saving False booleans
+- Fixed issue with dynamic documents deltas
+- Added Reverse Delete Rule support to ListFields - MapFields aren't supported
+- Added customisable cascade kwarg options
+- Fixed Handle None values for non-required fields
+- Removed Document._get_subclasses() - no longer required
+- Fixed bug requiring subclasses when not actually needed
+- Fixed deletion of dynamic data
+- Added support for the $elementMatch operator
+- Added reverse option to SortedListFields
+- Fixed dereferencing - multi directional list dereferencing
+- Fixed issue creating indexes with recursive embedded documents
+- Fixed recursive lookup in _unique_with_indexes
+- Fixed passing ComplexField defaults to constructor for ReferenceFields
+- Fixed validation of DictField Int keys
+- Added optional cascade saving
+- Fixed dereferencing - max_depth now taken into account
+- Fixed document mutation saving issue
+- Fixed positional operator when replacing embedded documents
+- Added Non-Django Style choices back (you can have either)
+- Fixed __repr__ of a sliced queryset
+- Added recursive validation error of documents / complex fields
+- Fixed breaking during queryset iteration
+- Added pre and post bulk-insert signals
+- Added ImageField - requires PIL
+- Fixed Reference Fields can be None in get_or_create / queries
+- Fixed accessing pk on an embedded document
+- Fixed calling a queryset after drop_collection now recreates the collection
+- Add field name to validation exception messages
+- Added UUID field
+- Improved efficiency of .get()
+- Updated ComplexFields so if required they won't accept empty lists / dicts
+- Added spec file for rpm-based distributions
+- Fixed ListField so it doesnt accept strings
+- Added DynamicDocument and EmbeddedDynamicDocument classes for expando schemas
+
+Changes in v0.5.2
+=================
+
+- A Robust Circular reference bugfix
+
+
+Changes in v0.5.1
+=================
+
+- Fixed simple circular reference bug
+
+Changes in v0.5
+===============
+
+- Added InvalidDocumentError - so Document core methods can't be overwritten
+- Added GenericEmbeddedDocument - so you can embed any type of embeddable document
+- Added within_polygon support - for those with mongodb 1.9
+- Updated sum / average to use map_reduce as db.eval doesn't work in sharded environments
+- Added where() - filter to allowing users to specify query expressions as Javascript
+- Added SequenceField - for creating sequential counters
+- Added update() convenience method to a document
+- Added cascading saves - so changes to Referenced documents are saved on .save()
+- Added select_related() support
+- Added support for the positional operator
+- Updated geo index checking to be recursive and check in embedded documents
+- Updated default collection naming convention
+- Added Document Mixin support
+- Fixed queryet __repr__ mid iteration
+- Added hint() support, so cantell Mongo the proper index to use for the query
 - Fixed issue with inconsitent setting of _cls breaking inherited referencing
 - Added help_text and verbose_name to fields to help with some form libs
 - Updated item_frequencies to handle embedded document lookups
@@ -18,7 +87,7 @@ Changes in dev
 - Added insert method for bulk inserts
 - Added blinker signal support
 - Added query_counter context manager for tests
-- Added optional map_reduce method item_frequencies
+- Added map_reduce method item_frequencies and set as default (as db.eval doesn't work in sharded environments)
 - Added inline_map_reduce option to map_reduce
 - Updated connection exception so it provides more info on the cause.
 - Added searching multiple levels deep in ``DictField``
@@ -43,7 +112,7 @@ Changes in dev
 - Added reverse delete rules
 - Fixed issue with unset operation
 - Fixed Q-object bug
-- Added ``QuerySet.all_fields`` resets previous .only() and .exlude()
+- Added ``QuerySet.all_fields`` resets previous .only() and .exclude()
 - Added ``QuerySet.exclude``
 - Added django style choices
 - Fixed order and filter issue

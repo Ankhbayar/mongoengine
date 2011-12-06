@@ -3,7 +3,9 @@
 import unittest
 
 from mongoengine import *
+from mongoengine.django.shortcuts import get_document_or_404
 
+from django.http import Http404
 from django.template import Context, Template
 from django.conf import settings
 import datetime
@@ -68,73 +70,16 @@ class QuerySetTest(unittest.TestCase):
         t = Template("{% for o in ol %}{{ o.name }}-{{ o.age }}:{% endfor %}")
 
         d = {"ol": self.Person.objects.filter(Q(age=10) | Q(name="C"))}
-        self.assertEqual(t.render(Context(d)), u'D-10:C-30:')
 
-    def test_q_with_complex_condition_in_template(self):
+        self.assertEqual(t.render(Context(d)), 'D-10:C-30:')
 
-        self.Person.drop_collection()
-        self.Post.drop_collection()
+        # Check double rendering doesn't throw an error
+        self.assertEqual(t.render(Context(d)), 'D-10:C-30:')
 
-        # Authors
-        bob = self.Person.objects.create(name="Bob", age=25)
-        jon = self.Person.objects.create(name="Jon", age=27)
+    def test_get_document_or_404(self):
+        p = self.Person(name="G404")
+        p.save()
 
-        # Bob do this
-        self.Post.objects.create(title="bob #1", author = bob, is_published = True, created_at = datetime.datetime(2011,5,28 ), order = 1 ) # Finished
-        self.Post.objects.create(title="bob #2", author = bob, is_published = False, created_at = datetime.datetime(2011,6,5 ), order = 2 ) # Draft
-        self.Post.objects.create(title="bob #3", author = bob, is_published = True, created_at = datetime.datetime(2011,6,1 ), order = 3 ) # Finished
+        self.assertRaises(Http404, get_document_or_404, self.Person, pk='1234')
+        self.assertEqual(p, get_document_or_404(self.Person, pk=p.pk))
 
-        # Jon do this
-        self.Post.objects.create(title="jon #1", author = jon, is_published = True, created_at = datetime.datetime(2011,5,28 ), order = 4 ) # Finished
-        self.Post.objects.create(title="jon #2", author = jon, is_published = True, created_at = datetime.datetime(2011,6,5 ), order = 5 ) # Finished
-        self.Post.objects.create(title="jon #3", author = jon, is_published = True, created_at = datetime.datetime(2011,6,1 ), order = 6 ) # Finished 
-        # Jon is Good :)
-
-        t = Template("{% for p in posts %}{{ p.title }}|{% endfor %}")
-
-        # Jon is Works
-        d = {"posts": self.Post.objects.filter(author = jon )}
-        self.assertEqual(t.render(Context(d)), u'jon #1|jon #2|jon #3|')
-
-        # Bob is Works
-        d = {"posts": self.Post.objects.filter(author = bob )}
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|')
-
-        # Finished Works Jon & Bob
-        d = {"posts": self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) ).filter( is_published = True  )}
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #3|jon #1|jon #2|jon #3|')
-
-        # Finished Works Jon & Bob in Jun
-        d = {"posts": self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) ).filter( is_published = True ).filter(ymd__startswith = "2011-06" )}
-        self.assertEqual(t.render(Context(d)), u'bob #3|jon #2|jon #3|')
-
-        # Jon & Bob all works 
-        d = {"posts": self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) )}
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
-
-        # All works in May & Jun without order
-        d = {"posts": self.Post.objects.filter(Q(ymd__startswith = "2011-05" ) | Q(ymd__startswith = "2011-06" ) )}
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
-        
-        # All works in May & Jun
-        d = {"posts": self.Post.objects.filter(Q(ymd__startswith = "2011-05" ) | Q(ymd__startswith = "2011-06" ) ).order_by("+order")} # Boom! #185
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
-
-        # Jon & Bob all works 
-        p = Paginator(objects, 2) # 2 per page
-        d = {"posts": self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) )}
-        self.assertEqual(t.render(Context(d)), u'bob #1|bob #2|bob #3|jon #1|jon #2|jon #3|')
-
-        # With paginator
-        from django.core.paginator import Paginator
-        # Finished Works Jon & Bob in Jun
-        objects = self.Post.objects.filter(Q(author = bob ) | Q(author = jon ) ).filter( is_published = True , ymd__startswith = "2011-06" )
-        p = Paginator(objects, 2) # 2 per page
-
-        # First page
-        d = {"posts": p.page(1).object_list }
-        self.assertEqual(t.render(Context(d)), u'bob #3|jon #2|')
-
-        # Second page
-        d = {"posts": p.page(2).object_list }
-        self.assertEqual(t.render(Context(d)), u'jon #3|')

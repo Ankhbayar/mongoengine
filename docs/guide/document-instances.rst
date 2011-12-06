@@ -4,12 +4,12 @@ Documents instances
 To create a new document object, create an instance of the relevant document
 class, providing values for its fields as its constructor keyword arguments.
 You may provide values for any of the fields on the document::
-    
+
     >>> page = Page(title="Test Page")
     >>> page.title
     'Test Page'
 
-You may also assign values to the document's fields using standard object 
+You may also assign values to the document's fields using standard object
 attribute syntax::
 
     >>> page.title = "Example Page"
@@ -18,9 +18,9 @@ attribute syntax::
 
 Saving and deleting documents
 =============================
-MongoEngine tracks changes to documents to provide efficient saving.  To save 
+MongoEngine tracks changes to documents to provide efficient saving.  To save
 the document to the database, call the :meth:`~mongoengine.Document.save` method.
-If the document does not exist in the database, it will be created. If it does 
+If the document does not exist in the database, it will be created. If it does
 already exist, then any changes will be updated atomically.  For example::
 
     >>> page = Page(title="Test Page")
@@ -29,17 +29,28 @@ already exist, then any changes will be updated atomically.  For example::
     >>> page.save()  # Performs an atomic set on the title field.
 
 .. note::
+
     Changes to documents are tracked and on the whole perform `set` operations.
 
     * ``list_field.pop(0)`` - *sets* the resulting list
     * ``del(list_field)``   - *unsets* whole list
 
-To delete a document, call the :meth:`~mongoengine.Document.delete` method.
-Note that this will only work if the document exists in the database and has a
-valide :attr:`id`.
-
 .. seealso::
     :ref:`guide-atomic-updates`
+
+Cascading Saves
+---------------
+If your document contains :class:`~mongoengine.ReferenceField` or
+:class:`~mongoengine.GenericReferenceField` objects, then by default the
+:meth:`~mongoengine.Document.save` method will automatically save any changes to
+those objects as well.  If this is not desired passing :attr:`cascade` as False
+to the save method turns this feature off.
+
+Deleting documents
+------------------
+To delete a document, call the :meth:`~mongoengine.Document.delete` method.
+Note that this will only work if the document exists in the database and has a
+valid :attr:`id`.
 
 Document IDs
 ============
@@ -78,6 +89,7 @@ is an alias to :attr:`id`::
     >>> page.id == page.pk
 
 .. note::
+
    If you define your own primary key field, the field implicitly becomes
    required, so a :class:`ValidationError` will be thrown if you don't provide
    it.
