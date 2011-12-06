@@ -2527,6 +2527,52 @@ class DocumentTest(unittest.TestCase):
             person.save()
         finally:
             Collection.update = orig_update
+    
+    def test_db_alias_tests(self):
+        """ DB Alias tests """
+        # mongoenginetest - Is default connection alias from setUp()
+        # Register Aliases
+        register_connection('testdb-1', "mongoenginetest2" )
+        register_connection('testdb-2', "mongoenginetest3" )
+        register_connection('testdb-3', 'mongoenginetest4')
+
+        class User(Document):
+            name = StringField()
+        class Book(Document):
+            name = StringField()
+            meta = {"db_alias" : "testdb-1" }
+        
+        # Drops
+        User.drop_collection()
+        Book.drop_collection()
+
+        # Create
+        bob = User.objects.create(name = "Bob")
+        hp = Book.objects.create(name = "Harry Potter")
+
+        # Selects
+        self.assertEqual( User.objects.first(), bob)
+        self.assertEqual( Book.objects.first(), hp)
+
+        # DeRefecence
+        class AuthorBooks(Document):
+            author = ReferenceField(User)
+            book = ReferenceField(Book)
+            meta = {"db_alias" : "testdb-2" }
+        # Drops
+        AuthorBooks.drop_collection()
+
+        ab = AuthorBooks.objects.create( author = bob, book = hp)
+        # select
+        self.assertEqual( AuthorBooks.objects.first(), ab)
+        self.assertEqual( AuthorBooks.objects.first().book, hp)
+        self.assertEqual( AuthorBooks.objects.first().author, bob)
+                
+
+
+
+
+
 
     def test_db_ref_usage(self):
         """ DB Ref usage in __raw__ queries """
@@ -2595,24 +2641,6 @@ class DocumentTest(unittest.TestCase):
                                         }    
                                     ) ] ) , "1,2" )
 
-        # Finding bob or Peter related books 
-        #self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
-        #                            Q(extra__a = bob) | Q(extra__a = peter) | 
-        #                            Q(author__all = [bob, peter ] ) |
-        #                            #Q(extra__b = bob.to_dbref())  | Q(extra__b = peter.to_dbref())   
-        #                            Q(extra__b = bob) | Q(extra__b = peter) 
-        #                            ) ] ) , "1,2,3,4,9" )
-        #ref_list = [ bob.to_dbref(), peter.to_dbref() ]
-        #self.assertEqual(u",".join([str(b) for b in Book.objects.filter( 
-        #                            __raw__ = { 
-        #                                "$or" : [ 
-        #                                    {"author" : {"$all" : [ ref_list ] } },
-        #                                    {"extra" : { "$all" : 
-        #                                                [ {"a" : {"$all" : [ ref_list ] } },
-        #                                                  {"b" : {"$all" : [ ref_list ] } },
-        #                                                ] } }
-        #                                        ] }
-        #                            ) ] ) , "1,2,3,4,6" )
 
                                     
 
